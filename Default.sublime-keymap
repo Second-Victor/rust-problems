@@ -1,0 +1,16 @@
+[
+    {
+        "keys": ["f4"],
+        "command": "rust_problems_next",
+        "context": [
+            { "key": "rust_problems_has_diagnostics", "operator": "equal", "operand": true }
+        ]
+    },
+    {
+        "keys": ["shift+f4"],
+        "command": "rust_problems_previous",
+        "context": [
+            { "key": "rust_problems_has_diagnostics", "operator": "equal", "operand": true }
+        ]
+    }
+]

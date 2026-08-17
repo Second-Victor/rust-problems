@@ -1,0 +1,22 @@
+%YAML 1.2
+---
+name: Rust Problems
+hidden: true
+scope: text.rust-problems
+contexts:
+  main:
+    - match: '^RUST PROBLEMS$'
+      scope: markup.heading.rust-problems
+    - match: '^(Project|Errors|Rust Problems cleared)(:)?.*$'
+      scope: comment.line.rust-problems
+    - match: '^(.+?\.rs):(\d+):(\d+):'
+      captures:
+        1: entity.name.filename.rust-problems
+        2: constant.numeric.line.rust-problems
+        3: constant.numeric.column.rust-problems
+    - match: '\berror(\[[^\]]+\])?:'
+      scope: invalid.illegal.rust-problems
+    - match: '\bwarning(\[[^\]]+\])?:'
+      scope: markup.warning.rust-problems
+    - match: '^\s+(note|help):'
+      scope: comment.line.rust-problems
