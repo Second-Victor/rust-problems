@@ -133,6 +133,14 @@ Cargo work. Choose one system for compiler diagnostics by disabling this
 adapter in SublimeLinter or adjusting rust-analyzer's check configuration; this
 package never changes another package's settings automatically.
 
+## Status counters
+
+The former Rust Problems `Rust ⊗ 3  ⚠ 2` counter is deliberately not part of
+this adapter. SublimeLinter owns the diagnostics status message, panel, gutter,
+annotations, and navigation; recreating a separate counter would reintroduce a
+second diagnostics state machine. A Zed-like aggregate counter would be a
+better generic SublimeLinter enhancement if the framework adds one in future.
+
 ## Troubleshooting
 
 - **Cargo cannot be found:** Set `linters.cargo.executable` to the Cargo path,
