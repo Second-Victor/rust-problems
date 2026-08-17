@@ -1,124 +1,174 @@
-# Rust Problems for Sublime Text
+# SublimeLinter-contrib-cargo
 
-A focused Rust diagnostics companion for Sublime Text.
+SublimeLinter integration for Cargo's Rust compiler diagnostics, powered by
+`cargo check --message-format=json`.
 
-Rust Problems runs `cargo check --workspace --message-format=json`, counts project-wide Rust errors and warnings, and shows the totals in Sublime's status bar.
+This is a narrow Cargo adapter. SublimeLinter owns lint scheduling,
+highlighting, diagnostics panels, navigation, status messages, filtering, and
+per-project configuration.
 
-## Status bar
+## Features
 
-Examples:
+- Cargo/rustc errors and warnings surfaced through SublimeLinter
+- Structured Cargo JSON parsing — no scraping of human-readable rustc output
+- Rust error and lint codes, such as `E0308` and `unused_imports`
+- Exact start and end source locations
+- Diagnostics from other files reported by the same Cargo check
+- Nearest-Cargo-manifest working directory for crate and workspace members
+- Standard SublimeLinter settings, including `args`, `executable`, `env`,
+  `lint_mode`, `selector`, `working_dir`, `styles`, `filter_errors`, and
+  `disable`
 
-- `Rust ✓`
-- `Rust ⊗ 3  ⚠ 7`
-- `Rust Problems: checking…`
+## Requirements
 
-Sublime's public API allows plugins to place text in the status bar, but it does not expose a click handler for custom `View.set_status()` entries. For that reason the text itself cannot be made into a reliable clickable button without unsupported UI hacks.
+- Sublime Text 4 build 4205 or newer
+- [SublimeLinter](https://packagecontrol.io/packages/SublimeLinter)
+- Rust and Cargo, normally installed through [rustup](https://rustup.rs/)
 
-## Problems tab
+The package selects Sublime Text's current Python plugin host through
+`.python-version` (`3.14`).
 
-Use **Tools → Rust Problems → Open Problems Tab** or the Command Palette command **Rust Problems: Open Problems Tab**.
+## Installation
 
-This opens a normal, read-only Sublime tab named **Rust Problems** containing all current Cargo errors and warnings. If the tab is already open it updates in place after each Cargo check. Navigable diagnostics also get an **Open** link on the right, so you can click directly through to the source location.
+Package Control installation will be available once the package is accepted.
 
-## Problem navigation
+For local development, clone this repository into Sublime Text's `Packages`
+directory with the folder name `SublimeLinter-contrib-cargo`, then restart
+Sublime Text. The default `Packages` path is:
 
-Use **Tools → Rust Problems → Next Problem/Previous Problem** or the matching
-Command Palette commands.
+| Platform | Packages directory |
+| --- | --- |
+| macOS | `~/Library/Application Support/Sublime Text/Packages` |
+| Linux | `~/.config/sublime-text/Packages` |
+| Windows | `%APPDATA%\\Sublime Text\\Packages` |
 
-The package does not claim global key bindings. To opt into `F4` and `Shift+F4`,
-copy the commented examples from `Default.sublime-keymap` into your user key
-bindings. The included context limits them to Cargo projects with navigable
-Rust diagnostics.
+For example, on macOS:
 
-## Optional output panel
+```sh
+git clone https://github.com/Second-Victor/rust-problems.git \
+  "$HOME/Library/Application Support/Sublime Text/Packages/SublimeLinter-contrib-cargo"
+```
 
-The original bottom output panel remains available from **Tools → Rust Problems**. The menu is state-aware: it shows **Show Output Panel** while the panel is closed and changes to **Hide Output Panel** while the Rust Problems output panel is visible.
+Use **Preferences → Browse Packages…** to confirm a non-default location.
 
-The Command Palette uses a single **Rust Problems: Toggle Output Panel** command.
+## Configuration
 
-## Automatic checking
+The adapter runs this command from the nearest ancestor containing
+`Cargo.toml`:
 
-By default Rust Problems checks after saving:
+```text
+cargo check [your SublimeLinter args] --message-format=json
+```
 
-- `.rs` files
-- `Cargo.toml`
-- `Cargo.lock`
+It intentionally does not force `--workspace`: when opened in a workspace
+member, Cargo checks that member by default. Add Cargo options through normal
+SublimeLinter settings as needed:
 
-Rapid saves are debounced.
-
-## Settings
-
-Open **Preferences → Package Settings → Rust Problems → Settings**.
-
-Defaults:
-
-```json
+```jsonc
 {
-    "check_on_save": true,
-    "check_on_project_open": true,
-    "check_delay_ms": 750,
-    "initial_check_delay_ms": 300,
-    "cargo_path": "",
-    "cargo_args": [
-        "check",
-        "--workspace",
-        "--message-format=json"
-    ],
-    "include_external_diagnostics": false,
-    "show_panel_on_error": false,
-    "show_panel_on_warning": false,
-    "show_panel_on_check_failure": true
+    "linters": {
+        "cargo": {
+            "args": ["--all-features"],
+            // Examples: "--workspace", "-p", "my-crate", "--target", "wasm32-wasip2"
+            "lint_mode": ["on_save"]
+        }
+    }
 }
 ```
 
-## macOS Cargo discovery
+For a project-specific `.sublime-project` setting, SublimeLinter uses flattened
+keys:
 
-Rust Problems tries `cargo` on PATH and also checks common locations including `~/.cargo/bin/cargo`, `/opt/homebrew/bin/cargo`, and `/usr/local/bin/cargo`.
+```jsonc
+{
+    "settings": {
+        "SublimeLinter.linters.cargo.args": ["--workspace"],
+        "SublimeLinter.linters.cargo.lint_mode": ["on_save"]
+    }
+}
+```
 
+The JSON message-format flag is mandatory and placed after user `args`, so this
+adapter always receives machine-readable output.
 
-## Version 0.2.1
+Use the standard `executable` setting to select Cargo explicitly:
 
-- Changed the status-bar error glyph from `✕` to the circled-X glyph `⊗`.
-- The status text remains non-clickable because Sublime Text does not expose a click callback for custom `View.set_status()` entries.
+```jsonc
+{
+    "linters": {
+        "cargo": {
+            "executable": "~/.cargo/bin/cargo"
+        }
+    }
+}
+```
 
+SublimeLinter normally resolves executables using its configured PATH. As a
+small GUI-launch fallback, this adapter also checks `~/.cargo/bin/cargo`,
+`/opt/homebrew/bin/cargo`, and `/usr/local/bin/cargo` after normal resolution.
 
-## Version 0.2.3
+## Cargo projects and workspaces
 
-- Made the Tools menu output-panel action state-aware.
-- Shows **Show Output Panel** when the Rust Problems panel is closed.
-- Shows **Hide Output Panel** when the Rust Problems panel is currently visible.
-- Added **Rust Problems: Toggle Output Panel** to the Command Palette.
+The adapter finds the nearest `Cargo.toml` above the saved Rust file and uses
+that directory as Cargo's working directory. This avoids checking unrelated
+workspace members while letting Cargo discover the enclosing workspace,
+configuration, lockfile, and shared target directory. Use `args` with
+`--workspace` or `-p` when a broader or different package selection is wanted.
 
+Cargo can emit diagnostics for several files during one check. SublimeLinter
+supports cross-file diagnostics: it associates each diagnostic with Cargo's
+reported filename and clears stale diagnostics from previously affected files
+on the next check. Unsaved cross-file buffers are intentionally not overwritten
+by SublimeLinter until they are saved.
 
-## v0.2.3
+Cargo diagnostics without a valid source span, and nested `note`/`help`
+records, are not manufactured as editor diagnostics. The primary `error` or
+`warning` remains the useful, navigable report.
 
-- Fixes stale diagnostics in an already-open Rust Problems tab after a Cargo check completes.
-- Refreshes an already-created output panel even when the editor, rather than the panel, has focus.
-- Keeps the last valid Cargo root when a scratch Problems tab has focus.
-- Resolves save-triggered checks from the file that was actually saved.
-- Correctly replaces the final fixed diagnostic with the clean `No Rust compiler errors or warnings. ✓` state.
+## rust-analyzer
 
+`LSP-rust-analyzer`/rust-analyzer may already run Cargo checks and publish
+compiler diagnostics. Enabling both can mean duplicate diagnostics and extra
+Cargo work. Choose one system for compiler diagnostics by disabling this
+adapter in SublimeLinter or adjusting rust-analyzer's check configuration; this
+package never changes another package's settings automatically.
 
-## v0.2.4
+## Troubleshooting
 
-- Removed the F4 / Shift+F4 tip from the bottom of the Rust Problems tab and output rendering.
+- **Cargo cannot be found:** Set `linters.cargo.executable` to the Cargo path,
+  or add its directory to SublimeLinter's platform `paths` setting. This is
+  commonly needed when macOS launches Sublime Text from Finder or the Dock.
+- **No lint runs:** Cargo requires a saved Rust file and a discoverable
+  `Cargo.toml`. The adapter deliberately skips standalone or unsaved `.rs`
+  files instead of compiling a temporary file outside the project.
+- **Unexpected package selection:** Add `--workspace`, `-p`, feature, target,
+  or other Cargo options through `linters.cargo.args`.
+- **Need details:** Set SublimeLinter's top-level `"debug": true`, save a
+  Rust file, and inspect **View → Show Console** for the exact command,
+  working directory, and Cargo output.
 
-## v0.2.5
+## Development
 
-- Fixed the macOS main-menu integration so Rust Problems extends Sublime Text's existing **Tools** menu instead of creating a second top-level **Tools** menu.
-- Existing menu anchors now use only Sublime's built-in menu IDs (`tools`, `preferences`, and `package-settings`) so Sublime can merge the package entries correctly.
+Run the unit tests from the package root:
 
-## v0.2.6
+```sh
+python3 -m unittest discover -s tests -v
+```
 
-- Corrected the main-menu anchor ordering so Rust Problems reliably merges into Sublime Text's existing **Tools** menu.
+### Manual smoke test
 
-## v0.2.7
+1. Install SublimeLinter and this local package.
+2. Open a Cargo project and a saved Rust source file.
+3. Introduce a compiler error, save, and confirm SublimeLinter shows it.
+4. Fix the error, save, and confirm the diagnostic disappears.
+5. Introduce a warning and confirm it uses warning severity.
+6. Introduce a diagnostic in another source file and confirm it is attached to
+   that file.
+7. In a workspace, verify the nearest member is checked by default; add
+   `--workspace` in `linters.cargo.args` to check all members.
+8. Enable `"debug": true` in SublimeLinter settings when investigating a
+   command, PATH, or working-directory issue.
 
-- Moved **Tools → Rust Problems** into the developer-tool section directly after **LSP** by anchoring to LSP's existing `lsp` menu ID.
-- Keeps the built-in Tools menu intact and avoids creating a duplicate top-level menu.
+## License
 
-## v0.2.8
-
-- Changed F4 and Shift+F4 navigation bindings to opt-in examples so the package
-  does not override global Sublime Text key bindings by default.
-- Added package export exclusions for tests and development-only files.
+MIT. See [LICENSE](LICENSE).
