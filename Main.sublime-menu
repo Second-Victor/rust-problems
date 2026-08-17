@@ -62,6 +62,14 @@
                                     "base_file": "${packages}/Rust Problems/Rust Problems.sublime-settings",
                                     "default": "// Rust Problems user settings\n{\n\t$0\n}\n"
                                 }
+                            },
+                            {
+                                "caption": "Key Bindings",
+                                "command": "edit_settings",
+                                "args": {
+                                    "base_file": "${packages}/Rust Problems/Default.sublime-keymap",
+                                    "default": "[\n\t$0\n]\n"
+                                }
                             }
                         ]
                     }

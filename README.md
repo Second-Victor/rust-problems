@@ -20,12 +20,15 @@ Use **Tools → Rust Problems → Open Problems Tab** or the Command Palette com
 
 This opens a normal, read-only Sublime tab named **Rust Problems** containing all current Cargo errors and warnings. If the tab is already open it updates in place after each Cargo check. Navigable diagnostics also get an **Open** link on the right, so you can click directly through to the source location.
 
-## F4 navigation
+## Problem navigation
 
-- `F4` — next Rust problem
-- `Shift+F4` — previous Rust problem
+Use **Tools → Rust Problems → Next Problem/Previous Problem** or the matching
+Command Palette commands.
 
-Version 0.2 no longer relies on Sublime's build-result navigation for these keys. The plugin navigates its own parsed Cargo diagnostic list and opens the exact file, line and column directly. The key bindings only take over while a Cargo project has navigable Rust diagnostics, so normal Sublime F4 behaviour remains available otherwise.
+The package does not claim global key bindings. To opt into `F4` and `Shift+F4`,
+copy the commented examples from `Default.sublime-keymap` into your user key
+bindings. The included context limits them to Cargo projects with navigable
+Rust diagnostics.
 
 ## Optional output panel
 
@@ -113,3 +116,9 @@ Rust Problems tries `cargo` on PATH and also checks common locations including `
 
 - Moved **Tools → Rust Problems** into the developer-tool section directly after **LSP** by anchoring to LSP's existing `lsp` menu ID.
 - Keeps the built-in Tools menu intact and avoids creating a duplicate top-level menu.
+
+## v0.2.8
+
+- Changed F4 and Shift+F4 navigation bindings to opt-in examples so the package
+  does not override global Sublime Text key bindings by default.
+- Added package export exclusions for tests and development-only files.

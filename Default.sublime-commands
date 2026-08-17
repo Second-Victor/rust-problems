@@ -22,5 +22,21 @@
     {
         "caption": "Rust Problems: Clear",
         "command": "rust_problems_clear"
+    },
+    {
+        "caption": "Preferences: Rust Problems Settings",
+        "command": "edit_settings",
+        "args": {
+            "base_file": "${packages}/Rust Problems/Rust Problems.sublime-settings",
+            "default": "// Rust Problems user settings\n{\n\t$0\n}\n"
+        }
+    },
+    {
+        "caption": "Preferences: Rust Problems Key Bindings",
+        "command": "edit_settings",
+        "args": {
+            "base_file": "${packages}/Rust Problems/Default.sublime-keymap",
+            "default": "[\n\t$0\n]\n"
+        }
     }
 ]
