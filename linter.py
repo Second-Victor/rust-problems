@@ -8,7 +8,6 @@ from typing import Iterable
 from SublimeLinter.lint import Linter, LintMatch, PermanentError
 
 from .cargo import (
-    JSON_MESSAGE_FORMAT,
     build_cargo_command,
     find_cargo_root,
     parse_cargo_json_lines,
@@ -46,6 +45,15 @@ class Cargo(Linter):
         # framework's normal file-argument auto-append behavior.
         assert cmd is not None
         return self._communicate(cmd)
+
+    def on_stderr(self, output):
+        # Cargo writes normal build/progress messages to stderr even when the
+        # invocation itself is healthy. SublimeLinter's default ``on_stderr``
+        # marks any stderr output as a failed linter, which makes the status
+        # bar show ``cargo?``. Keep the output available in debug logs without
+        # turning ordinary Cargo chatter into a framework-level failure.
+        if output.strip():
+            self.logger.info("cargo stderr:\n{}".format(output.strip()))
 
     def find_errors(self, output: str) -> Iterable[LintMatch]:
         project_root = self.get_working_dir()

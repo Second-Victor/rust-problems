@@ -1,0 +1,5 @@
+[
+    {"caption": "Rust Problems: Show Problems", "command": "rust_problems_show_problems"},
+    {"caption": "Rust Problems: Open SublimeLinter Problems", "command": "rust_problems_open_sublime_linter_problems"},
+    {"caption": "Rust Problems: Toggle Problems", "command": "rust_problems_toggle_problems"}
+]

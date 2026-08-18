@@ -4,8 +4,10 @@ SublimeLinter integration for Cargo's Rust compiler diagnostics, powered by
 `cargo check --message-format=json`.
 
 This is a narrow Cargo adapter. SublimeLinter owns lint scheduling,
-highlighting, diagnostics panels, navigation, status messages, filtering, and
-per-project configuration.
+highlighting, the canonical diagnostics store, navigation, filtering, and
+per-project configuration. The package adds two small Rust-facing views of
+that existing data: the compact status counter and an optional read-only
+Problems tab.
 
 ## Features
 
@@ -21,12 +23,15 @@ per-project configuration.
 
 ## Requirements
 
-- Sublime Text 4 build 4205 or newer
+- Sublime Text 4
 - [SublimeLinter](https://packagecontrol.io/packages/SublimeLinter)
 - Rust and Cargo, normally installed through [rustup](https://rustup.rs/)
 
-The package selects Sublime Text's current Python plugin host through
-`.python-version` (`3.14`).
+The package uses `.python-version` = `3.8`, matching SublimeLinter itself. On
+Sublime Text build 4205 and newer, Sublime maps that compatibility value to
+the current Python 3.14 plugin host; on earlier compatible builds it selects
+the Python 3.8 host. Keeping both packages on the same plugin host is required
+for importing `SublimeLinter.lint`.
 
 ## Installation
 
@@ -133,13 +138,88 @@ Cargo work. Choose one system for compiler diagnostics by disabling this
 adapter in SublimeLinter or adjusting rust-analyzer's check configuration; this
 package never changes another package's settings automatically.
 
-## Status counters
+## Status counter
 
-The former Rust Problems `Rust ⊗ 3  ⚠ 2` counter is deliberately not part of
-this adapter. SublimeLinter owns the diagnostics status message, panel, gutter,
-annotations, and navigation; recreating a separate counter would reintroduce a
-second diagnostics state machine. A Zed-like aggregate counter would be a
-better generic SublimeLinter enhancement if the framework adds one in future.
+This adapter retains the original compact project summary in Sublime's status
+bar:
+
+```text
+Rust ✓
+Rust ⊗ 3  ⚠ 2
+```
+
+The counter does **not** run Cargo or maintain a second diagnostics pipeline.
+SublimeLinter remains the source of truth. The status module listens to
+SublimeLinter's Cargo result events and summarizes the Cargo diagnostics already
+stored by SublimeLinter for the current Cargo root.
+
+Cargo also writes routine build/progress messages to stderr. The adapter handles
+those messages without treating them as a failed linter, avoiding SublimeLinter's
+misleading `cargo?` status while keeping stderr available in debug logs.
+
+If you prefer to show only the compact `Rust ✓` / `Rust ⊗ … ⚠ …` indicator,
+you can disable SublimeLinter's own active-linter status text in SublimeLinter
+settings:
+
+```json
+{
+    "statusbar.show_active_linters": false
+}
+```
+
+This is deliberately a user choice; the Cargo adapter does not change the
+global SublimeLinter setting automatically.
+
+SublimeLinter still owns highlighting, gutter marks, its diagnostics panel,
+navigation, filtering, lint scheduling, and configuration.
+
+## Opening the problems list
+
+Use:
+
+```text
+Tools → Rust Problems → Show Problems
+```
+
+or the Command Palette command:
+
+```text
+Rust Problems: Show Problems
+```
+
+This opens a normal, read-only **Rust Problems** tab for the current Cargo
+root. Each Cargo error or warning is rendered with its file, line, column,
+severity, Rust diagnostic code, and message. Every navigable diagnostic also
+has a clickable **Open** link that jumps directly to the exact source
+location.
+
+If the tab is already open, it refreshes automatically when SublimeLinter
+publishes new Cargo results, so fixing an error and saving removes it from the
+list without reopening the tab.
+
+The tab is intentionally only an alternate renderer. It reads Cargo entries
+from SublimeLinter's existing diagnostics store and does **not** run Cargo,
+parse compiler output, schedule checks, or keep a second diagnostics pipeline.
+SublimeLinter's normal diagnostics panel is also available directly from the
+Rust Problems menu:
+
+```text
+Tools → Rust Problems → Open SublimeLinter Problems
+```
+
+or from the Command Palette:
+
+```text
+Rust Problems: Open SublimeLinter Problems
+```
+
+This opens SublimeLinter's native diagnostics panel without closing it when it
+is already visible. It is simply a convenience entry point into SublimeLinter's
+existing UI.
+
+`Rust Problems: Toggle Problems` is also available from the Command Palette;
+when the Rust Problems tab is active it closes it, otherwise it opens/focuses
+it.
 
 ## Troubleshooting
 
