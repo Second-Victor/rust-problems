@@ -1,0 +1,34 @@
+{
+    // Run a project-wide Cargo check after saving a Rust source file,
+    // Cargo.toml or Cargo.lock.
+    "check_on_save": true,
+
+    // Run once when a Cargo project is first activated in a Sublime window.
+    "check_on_project_open": true,
+
+    // Save-event debounce. Rapid saves result in one fresh Cargo check.
+    "check_delay_ms": 750,
+    "initial_check_delay_ms": 300,
+
+    // Leave blank to auto-detect Cargo. On macOS, ~/.cargo/bin/cargo is also
+    // checked explicitly because GUI applications can receive a reduced PATH.
+    "cargo_path": "",
+
+    // --workspace means the counts represent the Cargo workspace, not merely
+    // the currently-open source file.
+    "cargo_args": [
+        "check",
+        "--workspace",
+        "--message-format=json"
+    ],
+
+    // Normally only diagnostics whose primary source file belongs to the
+    // current Cargo project are shown.
+    "include_external_diagnostics": false,
+
+    // The panel normally stays out of your way; the status bar updates whether
+    // the panel is open or not.
+    "show_panel_on_error": false,
+    "show_panel_on_warning": false,
+    "show_panel_on_check_failure": true
+}

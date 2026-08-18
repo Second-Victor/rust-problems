@@ -1,5 +1,26 @@
 [
-    {"caption": "Rust Problems: Show Problems", "command": "rust_problems_show_problems"},
-    {"caption": "Rust Problems: Open SublimeLinter Problems", "command": "rust_problems_open_sublime_linter_problems"},
-    {"caption": "Rust Problems: Toggle Problems", "command": "rust_problems_toggle_problems"}
+    {
+        "caption": "Rust Problems: Check Project",
+        "command": "rust_problems_check_project"
+    },
+    {
+        "caption": "Rust Problems: Open Problems Tab",
+        "command": "rust_problems_show_panel"
+    },
+    {
+        "caption": "Rust Problems: Toggle Output Panel",
+        "command": "rust_problems_toggle_panel"
+    },
+    {
+        "caption": "Rust Problems: Next Problem",
+        "command": "rust_problems_next"
+    },
+    {
+        "caption": "Rust Problems: Previous Problem",
+        "command": "rust_problems_previous"
+    },
+    {
+        "caption": "Rust Problems: Clear",
+        "command": "rust_problems_clear"
+    }
 ]
