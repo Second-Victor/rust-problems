@@ -5,39 +5,18 @@ hidden: true
 scope: text.rust-problems
 contexts:
   main:
-    - match: '^Rust Problems$'
+    - match: '^RUST PROBLEMS$'
       scope: markup.heading.rust-problems
-    - match: '^─+$'
-      scope: punctuation.separator.rust-problems
-    - match: '^(Project|Root)(\s+)(.*)$'
+    - match: '^(Project|Errors|Rust Problems cleared)(:)?.*$'
+      scope: comment.line.rust-problems
+    - match: '^(.+?\.rs):(\d+):(\d+):'
       captures:
-        1: support.type.rust-problems
-        3: string.unquoted.rust-problems
-    - match: '^(✕)(\s+)(\d+)(\s+)(errors?)'
-      captures:
-        1: invalid.rust-problems
-        3: constant.numeric.rust-problems
-        5: invalid.rust-problems
-    - match: '(⚠)(\s+)(\d+)(\s+)(warnings?)$'
-      captures:
-        1: markup.warning.rust-problems
-        3: constant.numeric.rust-problems
-        5: markup.warning.rust-problems
-    - match: '^✓  No Cargo errors or warnings\.$'
-      scope: markup.inserted.rust-problems
-    - match: '^(?!\s|Rust Problems$|Project\s|Root\s|✕|✓|─)(.+)$'
-      scope: entity.name.filename.rust-problems
-    - match: '^  (\d+):(\d+)\s+(ERROR)\s*(\S+)?$'
-      captures:
-        1: constant.numeric.line.rust-problems
-        2: constant.numeric.column.rust-problems
-        3: invalid.rust-problems
-        4: entity.name.constant.rust-problems
-    - match: '^  (\d+):(\d+)\s+(WARNING)\s*(\S+)?$'
-      captures:
-        1: constant.numeric.line.rust-problems
-        2: constant.numeric.column.rust-problems
-        3: markup.warning.rust-problems
-        4: entity.name.constant.rust-problems
-    - match: '^          .+$'
-      scope: text.rust-problems diagnostic.message.rust-problems
+        1: entity.name.filename.rust-problems
+        2: constant.numeric.line.rust-problems
+        3: constant.numeric.column.rust-problems
+    - match: '\berror(\[[^\]]+\])?:'
+      scope: invalid.illegal.rust-problems
+    - match: '\bwarning(\[[^\]]+\])?:'
+      scope: markup.warning.rust-problems
+    - match: '^\s+(note|help):'
+      scope: comment.line.rust-problems

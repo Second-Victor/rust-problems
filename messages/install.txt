@@ -1,6 +1,0 @@
-SublimeLinter-contrib-cargo requires both SublimeLinter and Cargo.
-
-1. Install SublimeLinter through Package Control.
-2. Install Rust/Cargo using rustup or your system package manager.
-3. Open a saved Rust file in a Cargo project and configure Cargo through
-   SublimeLinter's standard "linters.cargo" settings if needed.
