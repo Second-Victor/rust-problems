@@ -109,3 +109,17 @@ Rust Problems tries `cargo` on PATH and also checks common locations including `
 
 - Fixed macOS main-menu integration by declaring the built-in `Tools` anchor before `Preferences`, matching Sublime Text's main-menu order.
 - Keeps `Rust Problems` inside Sublime Text's existing Tools menu without creating a duplicate top-level Tools menu.
+
+## v0.2.7
+
+- Resolve Cargo workspace metadata before parsing diagnostics so navigation works
+  when checking from a member crate. Moving between workspace members retains
+  the current diagnostic list.
+- Run Cargo on a dedicated worker. Saves during a check request one fresh check
+  after the current run and the save debounce have finished.
+- Preserve check failures in the status bar, Problems tab, and output panel until
+  a new check or Clear. Discard results from cancelled or superseded checks.
+- Preserve the Problems tab's selection and scroll position during refreshes.
+
+Run tests with `python3 -m unittest discover -s tests -v`. The workspace integration
+test uses Cargo offline and is skipped when Cargo is unavailable.
