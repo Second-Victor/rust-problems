@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -20,6 +21,28 @@ SAMPLE = r'''{"reason":"compiler-message","package_id":"path+file:///tmp/titan#0
 
 
 class CoreTests(unittest.TestCase):
+    def test_unexpected_json_records_do_not_abort_parsing(self):
+        records = '\n'.join([
+            '{invalid json}', '{}',
+            json.dumps({'reason': 'compiler-message', 'message': 'unexpected'}),
+            SAMPLE,
+        ])
+        self.assertEqual((1, 1), count_diagnostics(
+            parse_cargo_json_lines(records, '/tmp/titan')))
+
+    def test_spanless_external_diagnostics_follow_filter_setting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = os.path.join(directory, 'project')
+            records = '\n'.join(json.dumps({
+                'reason': 'compiler-message',
+                'manifest_path': os.path.join(directory, package, 'Cargo.toml'),
+                'message': {'level': 'warning', 'message': package, 'spans': []},
+            }) for package in ('project', 'dependency'))
+            diagnostics = parse_cargo_json_lines(records, root)
+            self.assertEqual(['project'], [item.message for item in diagnostics])
+            self.assertEqual(2, len(parse_cargo_json_lines(
+                records, root, include_external=True)))
+
     def test_parser_counts_errors_and_warnings(self):
         diagnostics = parse_cargo_json_lines(SAMPLE, "/tmp/titan")
         self.assertEqual((1, 1), count_diagnostics(diagnostics))

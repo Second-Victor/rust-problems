@@ -107,13 +107,25 @@ def parse_cargo_json_lines(
         except json.JSONDecodeError:
             continue
 
-        if message.get("reason") != "compiler-message":
+        if not isinstance(message, dict) or message.get("reason") != "compiler-message":
             continue
 
         diagnostic = message.get("message") or {}
+        if not isinstance(diagnostic, dict):
+            continue
         level = diagnostic.get("level")
         if level not in ("error", "warning"):
             continue
+
+        # Spanless diagnostics (including compiler summaries) still belong to
+        # a package. Cargo supplies its manifest path on compiler-message
+        # records, so external packages can be filtered without a source span.
+        manifest_path = message.get("manifest_path")
+        if manifest_path and not include_external:
+            manifest_path = (manifest_path if os.path.isabs(manifest_path)
+                             else os.path.join(project_root, manifest_path))
+            if not is_within(manifest_path, project_root):
+                continue
 
         span = _primary_span(diagnostic)
         file_name: Optional[str] = None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -37,6 +38,13 @@ class WindowState:
     root: Optional[str] = None
     diagnostics: list[Diagnostic] = field(default_factory=list)
     checked_once: bool = False
+    failure: Optional[str] = None
+    workspace_root: Optional[str] = None
+    member_roots: set[str] = field(default_factory=set)
+    checking: bool = False
+    worker_running: bool = False
+    pending_version: Optional[int] = None
+    closed: bool = False
     request_version: int = 0
     process: Optional[subprocess.Popen] = None
     navigation_index: int = -1
@@ -60,14 +68,22 @@ class RustProblemsManager:
         with self._states_lock:
             state = self._states.pop(window_id, None)
         if state:
-            self._terminate_process(state)
+            with state.lock:
+                state.closed = True
+                state.request_version += 1
+                state.pending_version = None
+                self._terminate_process(state)
 
     def shutdown(self) -> None:
         with self._states_lock:
             states = list(self._states.values())
             self._states.clear()
         for state in states:
-            self._terminate_process(state)
+            with state.lock:
+                state.closed = True
+                state.request_version += 1
+                state.pending_version = None
+                self._terminate_process(state)
         for window in sublime.windows():
             for view in window.views():
                 view.erase_status(STATUS_KEY)
@@ -94,10 +110,18 @@ class RustProblemsManager:
             if root is None and state.root and os.path.isfile(os.path.join(state.root, "Cargo.toml")):
                 root = state.root
 
+            if root and (root == state.workspace_root or root in state.member_roots):
+                root = state.root
+
             if root != state.root:
                 state.root = root
                 state.diagnostics = []
                 state.checked_once = False
+                state.failure = None
+                state.workspace_root = None
+                state.member_roots.clear()
+                state.checking = False
+                state.pending_version = None
                 state.request_version += 1
                 state.navigation_index = -1
                 self._terminate_process(state)
@@ -125,6 +149,8 @@ class RustProblemsManager:
         with state.lock:
             state.request_version += 1
             version = state.request_version
+            state.checking = True
+            state.pending_version = None
 
         self._set_checking_status(window, state)
         sublime.set_timeout_async(
@@ -140,6 +166,9 @@ class RustProblemsManager:
         with state.lock:
             state.diagnostics = []
             state.checked_once = False
+            state.failure = None
+            state.checking = False
+            state.pending_version = None
             state.request_version += 1
             state.navigation_index = -1
             self._terminate_process(state)
@@ -169,7 +198,7 @@ class RustProblemsManager:
         with state.lock:
             checked_once = state.checked_once
             diagnostics = list(state.diagnostics)
-            running = state.process is not None and state.process.poll() is None
+            running = state.checking
 
         if not checked_once and not running:
             text = "RUST PROBLEMS\n" + "=" * 72 + f"\nProject: {root}\n\nChecking…\n"
@@ -177,7 +206,7 @@ class RustProblemsManager:
             self.check_now(window)
             return
 
-        self._write_problems_view(window, render_panel(diagnostics, root), focus=True, diagnostics=diagnostics)
+        self._write_problems_view(window, self._result_text(state), focus=True, diagnostics=diagnostics)
 
     def show_output_panel(self, window: sublime.Window) -> None:
         """Keep the classic bottom output panel available as an optional view."""
@@ -194,7 +223,7 @@ class RustProblemsManager:
         with state.lock:
             checked_once = state.checked_once
             diagnostics = list(state.diagnostics)
-            running = state.process is not None and state.process.poll() is None
+            running = state.checking
 
         if not checked_once and not running:
             self._write_panel(
@@ -203,7 +232,7 @@ class RustProblemsManager:
             )
             self.check_now(window)
         else:
-            self._write_panel(window, render_panel(diagnostics, root))
+            self._write_panel(window, self._result_text(state))
 
         window.run_command("show_panel", {"panel": PANEL_FULL_NAME})
 
@@ -226,7 +255,7 @@ class RustProblemsManager:
         """
         state = self.state_for(window)
         with state.lock:
-            root = state.root
+            root = state.workspace_root or state.root
             items = [item for item in state.diagnostics if self._is_navigable(item)]
             if not root or not items:
                 window.status_message("Rust Problems: no navigable diagnostics")
@@ -257,7 +286,7 @@ class RustProblemsManager:
     def open_diagnostic(self, window: sublime.Window, diagnostic_index: int) -> None:
         state = self.state_for(window)
         with state.lock:
-            root = state.root
+            root = state.workspace_root or state.root
             diagnostics = list(state.diagnostics)
             if not root or diagnostic_index < 0 or diagnostic_index >= len(diagnostics):
                 return
@@ -283,16 +312,56 @@ class RustProblemsManager:
         window = self._find_window(window_id)
         if not window:
             return
-        state = self.state_for(window)
-
+        with self._states_lock:
+            state = self._states.get(window_id)
+        if state is None:
+            return
         with state.lock:
-            if version != state.request_version or not state.root:
+            if state.closed or version != state.request_version or not state.root or not state.checking:
                 return
-            if state.process is not None and state.process.poll() is None:
+            if state.worker_running:
+                state.pending_version = version
                 return
+            state.worker_running = True
+            state.pending_version = None
             root = state.root
 
-        self._run_check(window, state, root, version)
+        def work() -> None:
+            try:
+                self._run_check(window, state, root, version)
+            except Exception as exc:
+                self._finish_with_error(window, state, version, f"Cargo check failed: {exc}")
+            finally:
+                with state.lock:
+                    state.worker_running = False
+                    pending = state.pending_version
+                    state.pending_version = None
+                if pending is not None:
+                    sublime.set_timeout_async(lambda: self._start_if_latest(window_id, pending), 0)
+
+        threading.Thread(target=work, name="Rust Problems Cargo", daemon=True).start()
+
+    def _capture(
+        self, state: WindowState, version: int, command: list[str],
+        root: str, env: dict[str, str], creationflags: int,
+    ) -> Optional[tuple[int, str, str]]:
+        # Register the process under the same lock used by Clear and shutdown.
+        with state.lock:
+            if state.closed or version != state.request_version:
+                return None
+            process = subprocess.Popen(
+                command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8", errors="replace", env=env,
+                creationflags=creationflags,
+            )
+            state.process = process
+        try:
+            stdout, stderr = process.communicate()
+            return process.returncode, stdout, stderr
+        finally:
+            with state.lock:
+                if state.process is process:
+                    state.process = None
 
     def _run_check(self, window: sublime.Window, state: WindowState, root: str, version: int) -> None:
         settings = self.settings()
@@ -329,50 +398,46 @@ class RustProblemsManager:
         if os.name == "nt":
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-        try:
-            process = subprocess.Popen(
-                command,
-                cwd=root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                env=env,
-                creationflags=creationflags,
-            )
-        except OSError as exc:
-            self._finish_with_error(window, state, version, f"Unable to start Cargo: {exc}")
+        # Cargo reports source locations relative to the workspace, even when
+        # invoked from a member crate. Locate it without fetching dependencies.
+        located = self._capture(
+            state, version,
+            [cargo, "metadata", "--no-deps", "--format-version=1"],
+            root, env, creationflags,
+        )
+        if located is None:
             return
-
-        with state.lock:
-            state.process = process
-
-        stdout, stderr = process.communicate()
-        return_code = process.returncode
-
-        with state.lock:
-            if state.process is process:
-                state.process = None
-            newest_version = state.request_version
-            current_root = state.root
-
-        if current_root != root:
+        code, metadata_text, detail = located
+        if code != 0 or not metadata_text.strip():
+            self._finish_with_error(window, state, version, detail.strip() or "Unable to locate Cargo workspace.")
             return
-
-        if version != newest_version:
-            self._start_if_latest(window.id(), newest_version)
+        metadata = json.loads(metadata_text)
+        workspace_root = metadata["workspace_root"]
+        members = set(metadata["workspace_members"])
+        member_roots = {
+            os.path.dirname(package["manifest_path"])
+            for package in metadata["packages"] if package["id"] in members
+        }
+        result = self._capture(state, version, command, root, env, creationflags)
+        if result is None:
             return
+        return_code, stdout, stderr = result
 
         include_external = bool(settings.get("include_external_diagnostics", False))
-        diagnostics = parse_cargo_json_lines(stdout, root, include_external=include_external)
+        diagnostics = parse_cargo_json_lines(stdout, workspace_root, include_external=include_external)
 
-        if return_code != 0 and not diagnostics:
+        if return_code != 0 and not any(item.is_error for item in diagnostics):
             detail = stderr.strip() or stdout.strip() or f"Cargo exited with status {return_code}."
             self._finish_with_error(window, state, version, detail)
             return
 
         with state.lock:
+            if state.closed or version != state.request_version:
+                return
+            state.workspace_root = workspace_root
+            state.member_roots = member_roots
+            state.failure = None
+            state.checking = False
             state.diagnostics = diagnostics
             state.checked_once = True
             state.navigation_index = -1
@@ -383,11 +448,14 @@ class RustProblemsManager:
         window = self._find_window(window_id)
         if not window:
             return
-        state = self.state_for(window)
+        with self._states_lock:
+            state = self._states.get(window_id)
+        if state is None:
+            return
         with state.lock:
-            if version != state.request_version or not state.root:
+            if state.closed or version != state.request_version or not state.root:
                 return
-            root = state.root
+            root = state.workspace_root or state.root
             diagnostics = list(state.diagnostics)
 
         text = render_panel(diagnostics, root)
@@ -412,8 +480,10 @@ class RustProblemsManager:
 
     def _finish_with_error(self, window: sublime.Window, state: WindowState, version: int, message: str) -> None:
         with state.lock:
-            if version != state.request_version:
+            if state.closed or version != state.request_version:
                 return
+            state.failure = message
+            state.checking = False
             state.checked_once = True
             state.diagnostics = []
             state.navigation_index = -1
@@ -423,12 +493,11 @@ class RustProblemsManager:
             current_window = self._find_window(window.id())
             if not current_window:
                 return
-            self._set_status_for_project_views(current_window, state.root, "Rust Problems: check failed")
-            text = (
-                "RUST PROBLEMS\n"
-                + "=" * 72
-                + f"\nProject: {state.root or 'unknown'}\n\nCheck failed:\n{message}\n"
-            )
+            with state.lock:
+                if state.closed or version != state.request_version:
+                    return
+            self._update_status(current_window, state)
+            text = self._result_text(state)
             self._write_panel(current_window, text)
             self._update_problems_view_if_open(current_window, text)
             if self.settings().get("show_panel_on_check_failure", True):
@@ -436,14 +505,24 @@ class RustProblemsManager:
 
         sublime.set_timeout(publish, 0)
 
+    def _result_text(self, state: WindowState) -> str:
+        with state.lock:
+            root = state.workspace_root or state.root or "unknown"
+            heading = "RUST PROBLEMS\n" + "=" * 72 + f"\nProject: {root}\n\n"
+            if state.checking:
+                return heading + "Checking…\n"
+            if state.failure:
+                return heading + f"Check failed:\n{state.failure}\n"
+            return render_panel(state.diagnostics, root)
+
     def _find_cargo(self, configured: str) -> Optional[str]:
         if configured:
             expanded = os.path.expanduser(configured)
-            if os.path.isfile(expanded):
+            if os.path.isfile(expanded) and os.access(expanded, os.X_OK):
                 return expanded
-            found = shutil.which(expanded)
-            if found:
-                return found
+            # An explicit setting selects a toolchain; silently using another
+            # Cargo can produce different diagnostics or change lockfiles.
+            return shutil.which(expanded)
 
         found = shutil.which("cargo")
         if found:
@@ -473,10 +552,11 @@ class RustProblemsManager:
 
     def _update_status(self, window: sublime.Window, state: WindowState) -> None:
         with state.lock:
-            root = state.root
+            root = state.workspace_root or state.root
             checked_once = state.checked_once
+            failure = state.failure
             diagnostics = list(state.diagnostics)
-            running = state.process is not None and state.process.poll() is None
+            running = state.checking
 
         if not root:
             for view in window.views():
@@ -485,6 +565,8 @@ class RustProblemsManager:
 
         if running:
             text = "Rust Problems: checking…"
+        elif failure:
+            text = "Rust Problems: check failed"
         elif not checked_once:
             text = "Rust Problems: ready"
         else:
@@ -529,13 +611,17 @@ class RustProblemsManager:
             except Exception:
                 pass
 
+        selections = [(region.a, region.b) for region in view.sel()]
+        viewport = view.viewport_position()
         view.erase_regions(PROBLEMS_ANNOTATION_KEY)
         view.set_read_only(False)
         view.run_command("select_all")
         view.run_command("right_delete")
         view.run_command("append", {"characters": text, "force": True, "scroll_to_end": False})
         view.sel().clear()
-        view.sel().add(sublime.Region(0, 0))
+        for a, b in selections or [(0, 0)]:
+            view.sel().add(sublime.Region(min(a, view.size()), min(b, view.size())))
+        view.set_viewport_position(viewport, False)
         view.set_read_only(True)
         view.set_scratch(True)
 
@@ -617,7 +703,7 @@ class RustProblemsManager:
         )
         state = self.state_for(window)
         if state.root:
-            settings.set("result_base_dir", state.root)
+            settings.set("result_base_dir", state.workspace_root or state.root)
         settings.set("word_wrap", True)
         panel.set_read_only(False)
         panel.run_command("select_all")
@@ -627,7 +713,6 @@ class RustProblemsManager:
 
     def _terminate_process(self, state: WindowState) -> None:
         process = state.process
-        state.process = None
         if process is not None and process.poll() is None:
             try:
                 process.terminate()
@@ -682,7 +767,7 @@ class RustProblemsEventListener(sublime_plugin.EventListener):
             return
         state = mgr.state_for(window)
         with state.lock:
-            should_check = not state.checked_once and state.process is None
+            should_check = not state.checked_once and not state.checking
         if should_check and mgr.settings().get("check_on_project_open", True):
             mgr.schedule_check(window, delay_ms=int(mgr.settings().get("initial_check_delay_ms", 300)))
 
