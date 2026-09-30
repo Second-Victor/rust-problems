@@ -518,11 +518,11 @@ class RustProblemsManager:
     def _find_cargo(self, configured: str) -> Optional[str]:
         if configured:
             expanded = os.path.expanduser(configured)
-            if os.path.isfile(expanded):
+            if os.path.isfile(expanded) and os.access(expanded, os.X_OK):
                 return expanded
-            found = shutil.which(expanded)
-            if found:
-                return found
+            # An explicit setting selects a toolchain; silently using another
+            # Cargo can produce different diagnostics or change lockfiles.
+            return shutil.which(expanded)
 
         found = shutil.which("cargo")
         if found:

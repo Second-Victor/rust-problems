@@ -25,6 +25,23 @@ with patch.dict(sys.modules, sublime=sublime, sublime_plugin=sublime_plugin):
 
 
 class ManagerTests(unittest.TestCase):
+    def test_invalid_explicit_cargo_does_not_fall_back(self):
+        with patch.object(plugin.os.path, 'isfile', return_value=False), \
+                patch.object(plugin.shutil, 'which', return_value=None) as which:
+            self.assertIsNone(self.manager._find_cargo('/missing/custom/cargo'))
+        which.assert_called_once_with('/missing/custom/cargo')
+
+    def test_non_executable_explicit_cargo_is_rejected(self):
+        with patch.object(plugin.os.path, 'isfile', return_value=True), \
+                patch.object(plugin.os, 'access', return_value=False), \
+                patch.object(plugin.shutil, 'which', return_value=None):
+            self.assertIsNone(self.manager._find_cargo('/custom/cargo'))
+
+    def test_explicit_cargo_command_is_resolved_on_path(self):
+        with patch.object(plugin.os.path, 'isfile', return_value=False), \
+                patch.object(plugin.shutil, 'which', return_value='/tools/cargo'):
+            self.assertEqual('/tools/cargo', self.manager._find_cargo('custom-cargo'))
+
     def setUp(self):
         self.window = Mock()
         self.window.id.return_value = 1

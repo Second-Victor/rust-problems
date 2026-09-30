@@ -72,6 +72,14 @@ Defaults:
 
 Rust Problems tries `cargo` on PATH and also checks common locations including `~/.cargo/bin/cargo`, `/opt/homebrew/bin/cargo`, and `/usr/local/bin/cargo`.
 
+When `cargo_path` is set, Rust Problems uses only that executable or command on
+PATH. An invalid setting reports a check failure rather than silently selecting
+a different Cargo installation.
+
+External diagnostics are filtered using both the package's manifest path (when
+Cargo provides it) and its primary source location. This also excludes dependency
+warnings without source spans unless `include_external_diagnostics` is enabled.
+
 
 ## Version 0.2.1
 
